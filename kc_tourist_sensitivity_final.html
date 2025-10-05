@@ -1,0 +1,203 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Kansas City Tourist Market — Sensitivity Tester</title>
+<style>
+  :root {
+    --accent: #c7ed2e;
+    --ink: #111;
+    --muted: #777;
+    --bg: #fff;
+    --card: #f7f7f7;
+  }
+  html, body { margin:0; padding:0; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: var(--ink); background: var(--bg) }
+  header { padding: 18px 22px; border-bottom: 1px solid #e9e9e9; display:flex; align-items:baseline; gap:12px }
+  header h1 { font-size: 20px; margin:0; font-weight: 700 }
+  header .subtitle { color: var(--muted); font-size: 13px }
+  main { padding: 20px; display: grid; gap: 18px; grid-template-columns: 330px 1fr }
+  .panel { background: var(--card); border-radius: 12px; padding: 14px; box-shadow: 0 1px 0 rgba(0,0,0,.04) inset }
+  .panel h2 { font-size: 15px; margin: 4px 0 10px 0 }
+  .row { display:grid; grid-template-columns: 1fr 110px; align-items:center; gap:10px; margin:10px 0 }
+  .row .label { font-size: 13px; color:#333 }
+  .row input[type='number'] { width: 100%; padding:6px 8px; border:1px solid #ddd; border-radius:8px; }
+  .help { font-size: 12px; color: var(--muted); margin-top: 8px }
+  .grid { display:grid; grid-template-columns: repeat(2, 1fr); gap: 10px }
+  .kpi { background:#fff; border-radius: 10px; padding:12px; border:1px solid #eee }
+  .kpi .k { font-size: 12px; color: var(--muted) }
+  .kpi .v { font-size: 18px; font-weight:700 }
+  canvas { width:100%; height:360px; border:1px solid #eee; border-radius:10px; background:#fff }
+  .controls { display:grid; gap:4px }
+  .mini { font-size: 11px; color:#444 }
+  .btns { display:flex; gap:8px; margin-top:8px }
+  button { padding:8px 10px; border-radius:8px; border:1px solid #ddd; background:#fff; cursor:pointer }
+  button.primary { background: var(--accent); border-color: #b1d629; font-weight: 600 }
+  .note { font-size: 12px; color: #444 }
+  footer { padding: 12px 20px; color: #666; font-size: 12px }
+  .fixed { color:#333; font-weight:600; font-size:13px }
+</style>
+</head>
+<body>
+<header>
+  <h1>KC Tourist Market — Sensitivity Tester</h1>
+  <div class="subtitle">Follows Table 9 math: rooms → room‑nights → person‑nights → hotel visitors → overnight → total</div>
+</header>
+<main>
+  <!-- Controls -->
+  <section class="panel">
+    <h2>Inputs</h2>
+    <div class="controls">
+      <div class="row">
+        <div class="label">Rooms (fixed)</div>
+        <div class="fixed" id="roomsFixed">18,055</div>
+      </div>
+      <div class="row">
+        <div class="label">Occupancy (0–1)</div>
+        <input id="occ" type="number" step="0.01" min="0" max="1" value="0.61" />
+      </div>
+      <div class="row">
+        <div class="label">Persons per Room</div>
+        <input id="ppr" type="number" step="0.1" min="0.5" max="4" value="1.4" />
+      </div>
+      <div class="row">
+        <div class="label">Avg. Length of Stay (nights)</div>
+        <input id="alos" type="number" step="0.1" min="0.5" max="14" value="2.3" />
+      </div>
+      <div class="row">
+        <div class="label">Hotel Share of Overnight</div>
+        <input id="hotelShare" type="number" step="0.01" min="0.1" max="0.95" value="0.55" />
+      </div>
+      <div class="row">
+        <div class="label">Overnight Share of Total</div>
+        <input id="overnightShare" type="number" step="0.01" min="0.1" max="0.95" value="0.71" />
+      </div>
+      <div class="btns">
+        <button class="primary" onclick="recalc()">Recalculate</button>
+        <button onclick="reset()">Reset</button>
+      </div>
+      <div class="help">Tweak inputs and press <b>Recalculate</b>. Tornado chart shows sensitivity impact on total visitors.</div>
+    </div>
+  </section>
+
+  <!-- Tornado -->
+  <section class="panel">
+    <h2>Tornado (impact ranges)</h2>
+    <canvas id="tornado" width="900" height="360"></canvas>
+    <div class="mini">Ranges use: Occupancy (0.50–0.70), PPR (1.2–1.6), ALOS (2.0–2.7), Hotel Share (0.50–0.60), Overnight Share (0.60–0.80).</div>
+  </section>
+
+  <!-- Results -->
+  <section class="panel">
+    <h2>Results</h2>
+    <div class="grid">
+      <div class="kpi"><div class="k">Occupied Room‑Nights</div><div id="orn" class="v">—</div></div>
+      <div class="kpi"><div class="k">Person‑Nights</div><div id="pn" class="v">—</div></div>
+      <div class="kpi"><div class="k">Hotel Visitors (unique)</div><div id="hv" class="v">—</div></div>
+      <div class="kpi"><div class="k">Overnight Visitors (all accom)</div><div id="ov" class="v">—</div></div>
+      <div class="kpi"><div class="k">Total Visitors</div><div id="tv" class="v">—</div></div>
+      <div class="kpi"><div class="k">Δ vs Baseline</div><div id="delta" class="v">—</div></div>
+    </div>
+    <div class="help note">Baseline: Rooms=18,055 (fixed); Occ=0.61; PPR=1.4; ALOS=2.3; Hotel Share=0.55; Overnight Share=0.71.</div>
+  </section>
+</main>
+<footer>
+  Built for offline use. All math runs in-browser.
+</footer>
+
+<script>
+const BASE = { rooms: 18055, occ: 0.61, ppr: 1.4, alos: 2.3, hotelShare: 0.55, overnightShare: 0.71 };
+const fmt = (n) => n.toLocaleString(undefined, {maximumFractionDigits:0});
+
+function calc(rooms, occ, ppr, alos, hotelShare, overnightShare) {
+  const orn = rooms * 365 * occ;
+  const pn  = orn * ppr;
+  const hv  = pn / alos;
+  const ov  = hv / hotelShare;
+  const tv  = ov / overnightShare;
+  return {orn, pn, hv, ov, tv};
+}
+
+function recalc() {
+  const rooms = BASE.rooms;
+  const occ = parseFloat(document.getElementById('occ').value || BASE.occ);
+  const ppr = parseFloat(document.getElementById('ppr').value || BASE.ppr);
+  const alos = parseFloat(document.getElementById('alos').value || BASE.alos);
+  const hotelShare = parseFloat(document.getElementById('hotelShare').value || BASE.hotelShare);
+  const overnightShare = parseFloat(document.getElementById('overnightShare').value || BASE.overnightShare);
+
+  const b = calc(BASE.rooms, BASE.occ, BASE.ppr, BASE.alos, BASE.hotelShare, BASE.overnightShare);
+  const r = calc(rooms, occ, ppr, alos, hotelShare, overnightShare);
+
+  document.getElementById('orn').textContent = fmt(r.orn);
+  document.getElementById('pn').textContent  = fmt(r.pn);
+  document.getElementById('hv').textContent  = fmt(r.hv);
+  document.getElementById('ov').textContent  = fmt(r.ov);
+  document.getElementById('tv').textContent  = fmt(r.tv);
+  const delta = r.tv - b.tv;
+  document.getElementById('delta').textContent = (delta >= 0 ? '+' : '−') + fmt(Math.abs(delta));
+
+  drawTornado(rooms, occ, ppr, alos, hotelShare, overnightShare);
+}
+
+function reset() {
+  document.getElementById('occ').value = BASE.occ;
+  document.getElementById('ppr').value = BASE.ppr;
+  document.getElementById('alos').value = BASE.alos;
+  document.getElementById('hotelShare').value = BASE.hotelShare;
+  document.getElementById('overnightShare').value = BASE.overnightShare;
+  recalc();
+}
+
+function drawTornado(rooms, occ, ppr, alos, hotelShare, overnightShare) {
+  const ranges = {
+    'Occupancy Rate': [0.50, 0.70],
+    'Persons per Room': [1.2, 1.6],
+    'Avg Length of Stay': [2.0, 2.7],
+    'Hotel Share of Overnight': [0.50, 0.60],
+    'Overnight Share of Total': [0.60, 0.80]
+  };
+  const params = Object.keys(ranges);
+  const series = params.map(p => {
+    const [lo, hi] = ranges[p];
+    const low = calc(rooms, p==='Occupancy Rate'?lo:occ,
+                           p==='Persons per Room'?lo:ppr,
+                           p==='Avg Length of Stay'?lo:alos,
+                           p==='Hotel Share of Overnight'?lo:hotelShare,
+                           p==='Overnight Share of Total'?lo:overnightShare).tv;
+    const high = calc(rooms, p==='Occupancy Rate'?hi:occ,
+                            p==='Persons per Room'?hi:ppr,
+                            p==='Avg Length of Stay'?hi:alos,
+                            p==='Hotel Share of Overnight'?hi:hotelShare,
+                            p==='Overnight Share of Total'?hi:overnightShare).tv;
+    return { name:p, low, high, range: Math.abs(high-low) };
+  }).sort((a,b)=> a.range - b.range);
+
+  const canvas = document.getElementById('tornado');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  const left = 180, right = W-30, top = 30, bottom = H-30;
+  const barH = (bottom-top)/series.length - 10;
+  const maxRange = Math.max(...series.map(s=>s.range)) || 1;
+
+  ctx.font = "12px system-ui, sans-serif";
+  ctx.fillStyle = "#333";
+  ctx.fillText("Change in Total Visitors (High - Low)", left, top-10);
+
+  series.forEach((s, i) => {
+    const y = top + i*(barH+10);
+    ctx.fillStyle = "#444";
+    ctx.fillText(s.name, 20, y + barH*0.7);
+    const w = (s.range / maxRange) * (right-left);
+    ctx.fillStyle = "#c7ed2e"; // new color
+    ctx.fillRect(left, y, w, barH);
+    ctx.fillStyle = "#222";
+    ctx.fillText((s.range).toLocaleString(undefined,{maximumFractionDigits:0}), left + w + 6, y + barH*0.7);
+  });
+}
+window.addEventListener('load', recalc);
+</script>
+</body>
+</html>
